@@ -1,43 +1,25 @@
-import useSWR from 'swr';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { fetchWrapper } from '@/util';
 import { Input } from '../ui/input';
 import { SelectSearch } from '../SelectSearch';
 import { Button } from '../ui/button';
 import { stripCurrency, formatAsCurrency } from './util';
 import { LoopIcon } from '@radix-ui/react-icons';
 import { ConversionSkeleton, InputSkeleton } from './LoadingSkeletons';
-import axios from 'axios';
-
-type Currency = {
-    code: string;
-    decimal_mark: string;
-    id: number;
-    name: string;
-    precision: number;
-    short_code: string;
-    subunit: number;
-    symbol: string;
-    symbol_first: boolean;
-    thousands_separator: string;
-};
+import { Currency } from './types';
+import { useCurrencies } from './useCurrencies';
+import { fetchWrapper } from '@/util';
 
 const CurrencyConvertor = () => {
-    const { data: currencies, isLoading } = useSWR<Currency[]>(
-        'https://api.currencybeacon.com/v1/currencies',
-        fetchWrapper
-    );
-    const sortedCurrencies = useMemo(
-        () => currencies?.sort((a, b) => a.name.localeCompare(b.name)) || [],
-        [currencies]
-    );
+    const { currencies, isLoading } = useCurrencies();
+
     const [fromCurrency, setFromCurrency] = useState<Currency>();
     const [toCurrency, setToCurrency] = useState<Currency>();
-    const [amount, setAmount] = useState('');
+    const [amount, setAmount] = useState<string>('');
     const [convertedAmount, setConvertedAmount] = useState<string>();
     const [isConverting, setIsConverting] = useState(false);
+
     const trackConvertedRef = useRef(0);
 
     const handleCurrencySelectChange = (
@@ -80,13 +62,10 @@ const CurrencyConvertor = () => {
             }
             setIsConverting(true);
 
-            // have to use axios directly here for some reason fetch wrapper is causing
-            // SWR to re-fetch every time a request is fired and no time to investigate
-            const response = await axios(
+            const response = await fetchWrapper(
                 'https://api.currencybeacon.com/v1/convert',
                 {
                     params: {
-                        api_key: import.meta.env.VITE_CURRENCY_API_KEY,
                         amount: parseFloat(
                             stripCurrency(
                                 amount,
@@ -101,7 +80,7 @@ const CurrencyConvertor = () => {
             );
 
             const formattedResponse = formatAsCurrency(
-                response.data.response.value.toFixed(2),
+                response.value.toFixed(2),
                 toCurrency?.thousands_separator,
                 toCurrency?.decimal_mark
             );
@@ -123,7 +102,7 @@ const CurrencyConvertor = () => {
         }
     };
 
-    const formatInputAsCurrency = () => {
+    const handleFormatInputAsCurrency = () => {
         if (!amount) return;
 
         setAmount(
@@ -155,6 +134,13 @@ const CurrencyConvertor = () => {
         }
     };
 
+    const handleSetAmount = (value: string) => {
+        setAmount(value);
+        if (convertedAmount) {
+            setConvertedAmount('');
+        }
+    };
+
     useEffect(() => {
         if (currencies && !fromCurrency && !toCurrency) {
             setFromCurrency(
@@ -166,10 +152,6 @@ const CurrencyConvertor = () => {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currencies]);
-
-    useEffect(() => {
-        setConvertedAmount('');
-    }, [amount]);
 
     useEffect(() => {
         if (amount && fromCurrency && toCurrency) {
@@ -195,8 +177,10 @@ const CurrencyConvertor = () => {
                             <Input
                                 type="text"
                                 placeholder="0.00"
-                                onChange={(e) => setAmount(e.target.value)}
-                                onBlur={formatInputAsCurrency}
+                                onChange={(e) =>
+                                    handleSetAmount(e.target.value)
+                                }
+                                onBlur={handleFormatInputAsCurrency}
                                 value={amount}
                                 className={
                                     fromCurrency && !fromCurrency.symbol_first
@@ -214,7 +198,7 @@ const CurrencyConvertor = () => {
 
                         <div className="col-span-2 flex">
                             <SelectSearch
-                                items={sortedCurrencies.map((currency) => ({
+                                items={currencies.map((currency) => ({
                                     value: currency.code,
                                     label: `${currency.name} (${currency.short_code})`,
                                 }))}
@@ -232,7 +216,7 @@ const CurrencyConvertor = () => {
                                 <LoopIcon />
                             </Button>
                             <SelectSearch
-                                items={sortedCurrencies.map((currency) => ({
+                                items={currencies.map((currency) => ({
                                     value: currency.code,
                                     label: `${currency.name} (${currency.short_code})`,
                                 }))}
